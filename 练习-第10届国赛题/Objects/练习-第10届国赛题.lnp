@@ -1,0 +1,7 @@
+".\Objects\main.obj",
+".\Objects\onewire.obj",
+".\Objects\iic.obj",
+".\Objects\PCF8591.obj",
+".\Objects\AT24C02.obj" 
+TO ".\Objects\练习-第10届国赛题" 
+PRINT(".\Listings\练习-第10届国赛题.m51")

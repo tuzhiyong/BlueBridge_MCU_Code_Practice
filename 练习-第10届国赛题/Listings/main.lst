@@ -1,0 +1,801 @@
+C51 COMPILER V9.60.7.0   MAIN                                                              02/03/2025 13:16:08 PAGE 1   
+
+
+C51 COMPILER V9.60.7.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\main
+                    -.lst) TABS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include "stc15.h"
+   2          #include "onewire.h"
+   3          #include "PCF8591.h"
+   4          #include "AT24C02.h"
+   5          #include <intrins.h>
+   6          #include <string.h>
+   7          code unsigned char Seg_Table[] ={0xc0,0xf9,0xa4,0xb0,0x99,0x92,0x82,0xf8,0x80,0x90,0x88,0x83,0xc6,0xa1,0x8
+             -6,0x8e};
+   8          code unsigned char Seg_Table_Dot[] = {0x40,0x79,0x24,0x30,0x19,0x12,0x02,0x78,0x00,0x10,0x08,0x03,0x46,0x2
+             -1,0x06,0x0e};
+   9          code unsigned char ST[] = "ST\r\n";
+  10          code unsigned char PARA[] = "PARA\r\n";
+  11          unsigned char count1 = 0;
+  12          unsigned char count2 = 0;
+  13          sbit Tx = P1^0;
+  14          sbit Rx = P1^1;
+  15          sbit row1 = P3^0;
+  16          sbit row2 = P3^1;
+  17          sbit row3 = P3^2;
+  18          sbit row4 = P3^3;
+  19          sbit col1 = P4^4;
+  20          sbit col2 = P4^2;
+  21          sbit col3 = P3^5;
+  22          sbit col4 = P3^4;
+  23          unsigned int temper = 2632;
+  24          unsigned char distance = 50;
+  25          unsigned int temperConfig = 30;
+  26          unsigned int distanceConfig = 35;
+  27          unsigned int temperConfig_temp = 30;
+  28          unsigned int distanceConfig_temp = 35;
+  29          unsigned int editTime = 0;
+  30          unsigned char s12 = 0;
+  31          unsigned char t0_count = 0;
+  32          unsigned char LED = 0xff,LED_Temp = 0xff;
+  33          unsigned int time = 0;
+  34          unsigned char urdat;
+  35          bit L1 = 1;
+  36          bit L2 = 1;
+  37          bit L3 = 1;
+  38          bit s13 = 0;
+  39          bit s12_press = 0;
+  40          bit s13_press = 0;
+  41          bit s13_v = 0;
+  42          
+  43          void SendString(unsigned char *str);
+  44          void SendByte(unsigned char dat);
+  45          
+  46          
+  47          
+  48          void Delay(unsigned int n)
+  49          {
+  50   1        while(n --);
+  51   1      }
+  52          
+C51 COMPILER V9.60.7.0   MAIN                                                              02/03/2025 13:16:08 PAGE 2   
+
+  53          void InitUart()
+  54          {
+  55   1        TMOD = 0x21;
+  56   1        TH1 = 0xFA;
+  57   1        TL1 = 0xFA;
+  58   1        TR1 = 1;
+  59   1        
+  60   1        SCON = 0x50;
+  61   1        AUXR = 0x00;
+  62   1        ES = 1;
+  63   1        EA = 1;
+  64   1      }
+  65          
+  66          void Uart() interrupt 4
+  67          {
+  68   1        unsigned char buffer1[12] = {0};
+  69   1        unsigned char buffer2[11] = {0};
+  70   1        if(RI == 1)
+  71   1        {
+  72   2          RI = 0;
+  73   2          urdat = SBUF;
+  74   2          if(urdat == ST[count1])
+  75   2          {
+  76   3            count1++;
+  77   3          }
+  78   2          else
+  79   2          {
+  80   3            count1 = 0;
+  81   3          }
+  82   2          if(count1 == 4)
+  83   2          {
+  84   3            count1 = 0;
+  85   3            SendByte('$');
+  86   3            SendByte(distance/10+'0');
+  87   3            SendByte(distance%10+'0');
+  88   3            SendByte(',');
+  89   3            SendByte(temper/100/10+'0');
+  90   3            SendByte(temper/100%10+'0');
+  91   3            SendByte('.');
+  92   3            SendByte(temper%100/10+'0');
+  93   3            SendByte(temper%100%10+'0');
+  94   3            SendByte('\r');
+  95   3            SendByte('\n');
+  96   3          }
+  97   2          if(urdat == ST[count2])
+  98   2          {
+  99   3            count2++;
+ 100   3          }
+ 101   2          else
+ 102   2          {
+ 103   3            count2 = 0;
+ 104   3          }
+ 105   2          if(count2 == 6)
+ 106   2          {
+ 107   3            count2 = 0;
+ 108   3            SendByte('$');
+ 109   3            SendByte(distanceConfig/10+'0');
+ 110   3            SendByte(distanceConfig%10+'0');
+ 111   3            SendByte(',');
+ 112   3            SendByte(temperConfig/10+'0');
+ 113   3            SendByte(temperConfig%10+'0');
+ 114   3            SendByte('\r');
+C51 COMPILER V9.60.7.0   MAIN                                                              02/03/2025 13:16:08 PAGE 3   
+
+ 115   3            SendByte('\n');
+ 116   3          }
+ 117   2        }
+ 118   1      }
+ 119          
+ 120          void SendByte(unsigned char dat)
+ 121          {
+ 122   1        SBUF = dat;
+ 123   1        while(TI == 0);
+ 124   1        TI = 0;
+ 125   1      }
+ 126          
+ 127          void SendString(unsigned char *str)
+ 128          {
+ 129   1        while(*str != '\0')
+ 130   1        {
+ 131   2          SendByte(*str++);
+ 132   2        }
+ 133   1      }
+ 134          
+ 135          void SelectHC573(unsigned char n)
+ 136          {
+ 137   1        switch(n)
+ 138   1        {
+ 139   2          case 4:
+ 140   2            P2 = (P2 & 0x1f)|0x80;
+ 141   2            P2 = (P2 & 0x1f);
+ 142   2          break;
+ 143   2          case 5:
+ 144   2            P2 = (P2 & 0x1f)|0xa0;
+ 145   2            P2 = (P2 & 0x1f);
+ 146   2          break;
+ 147   2          case 6:
+ 148   2            P2 = (P2 & 0x1f)|0xc0;
+ 149   2            P2 = (P2 & 0x1f);
+ 150   2          break;
+ 151   2          case 7:
+ 152   2            P2 = (P2 & 0x1f)|0xe0;
+ 153   2            P2 = (P2 & 0x1f);
+ 154   2          break;
+ 155   2        }
+ 156   1      }
+ 157          
+ 158          void InitTimer0()
+ 159          {
+ 160   1        TMOD = 0x21;
+ 161   1        TH0 = (65535 - 50000) / 256;
+ 162   1        TL0 = (65535 - 50000) % 256;
+ 163   1        ET0 = 0;
+ 164   1        TR0 = 1;
+ 165   1        EA = 1;
+ 166   1      }
+ 167          
+ 168          void Timer0() interrupt 1
+ 169          {
+ 170   1        TH0 = (65535 - 50000) / 256;
+ 171   1        TL0 = (65535 - 50000) % 256;
+ 172   1        t0_count ++;
+ 173   1        if(t0_count >= 20)
+ 174   1        {
+ 175   2          t0_count = 0;
+ 176   2          ET0 = 0;
+C51 COMPILER V9.60.7.0   MAIN                                                              02/03/2025 13:16:08 PAGE 4   
+
+ 177   2          if(s12_press == 1)
+ 178   2          {
+ 179   3            editTime = 0;
+ 180   3            Write_AT24C02(0,editTime >> 8);
+ 181   3            Delay(1000);
+ 182   3            Write_AT24C02(1,editTime & 0x00ff);
+ 183   3            Delay(1000);
+ 184   3          }
+ 185   2          else if(s13_press == 1)
+ 186   2          {
+ 187   3            if(s13_v == 0)
+ 188   3            {
+ 189   4              s13_v = 1;
+ 190   4            }
+ 191   3            else
+ 192   3            {
+ 193   4              s13_v = 0;
+ 194   4            }
+ 195   3          }
+ 196   2        }
+ 197   1      }
+ 198          
+ 199          void Delay12us(void)  //@12.000MHz
+ 200          {
+ 201   1        unsigned char data i;
+ 202   1      
+ 203   1        _nop_();
+ 204   1        _nop_();
+ 205   1        i = 33;
+ 206   1        while (--i);
+ 207   1      }
+ 208          
+ 209          void InitWave()
+ 210          {
+ 211   1        unsigned char i;
+ 212   1        for(i = 0;i < 8;i ++)
+ 213   1        {
+ 214   2          Tx = 1;
+ 215   2          Delay12us();
+ 216   2          Tx = 0;
+ 217   2          Delay12us();
+ 218   2        }
+ 219   1      }
+ 220          
+ 221          void Wave()
+ 222          {
+ 223   1        unsigned int temp;
+ 224   1        TMOD &= 0x0f;
+ 225   1        TH1 = TL1 = 0;
+ 226   1        InitWave();
+ 227   1        TR1 = 1;
+ 228   1        while((TF1 == 0)&&(Rx == 1));
+ 229   1        TR1 = 0;
+ 230   1        if(TF1 == 0)
+ 231   1        {
+ 232   2          temp = TH1;
+ 233   2          temp = (temp << 8)|TL1;
+ 234   2          distance = temp * 0.017;
+ 235   2        }
+ 236   1        else
+ 237   1        {
+ 238   2          distance = 0;
+C51 COMPILER V9.60.7.0   MAIN                                                              02/03/2025 13:16:08 PAGE 5   
+
+ 239   2          TF1 = 0;
+ 240   2        }
+ 241   1      }
+ 242          
+ 243          void DS18B20_Read()
+ 244          {
+ 245   1        unsigned char LSB,MSB;
+ 246   1        unsigned int t;
+ 247   1        init_ds18b20();
+ 248   1        Write_DS18B20(0xcc);
+ 249   1        Write_DS18B20(0x44);
+ 250   1        init_ds18b20();
+ 251   1        Write_DS18B20(0xcc);
+ 252   1        Write_DS18B20(0xbe);
+ 253   1        LSB = Read_DS18B20();
+ 254   1        MSB = Read_DS18B20();
+ 255   1        init_ds18b20();
+ 256   1        t = MSB;
+ 257   1        t = (t<<8)|LSB;
+ 258   1        temper = t * 6.25;
+ 259   1      }
+ 260          
+ 261          void smgDisplay(unsigned char m,unsigned char n)
+ 262          {
+ 263   1        P0 = 0x01 << m;
+ 264   1        SelectHC573(6);
+ 265   1        P0 = n;
+ 266   1        SelectHC573(7);
+ 267   1      }
+ 268          
+ 269          void Display_Temper()
+ 270          {
+ 271   1        smgDisplay(0,Seg_Table[15]);
+ 272   1        Delay(500);
+ 273   1        smgDisplay(1,0xff);
+ 274   1        Delay(500);
+ 275   1        smgDisplay(2,0xff);
+ 276   1        Delay(500);
+ 277   1        smgDisplay(3,0xff);
+ 278   1        Delay(500);
+ 279   1        smgDisplay(4,Seg_Table[temper/1000%10]);
+ 280   1        Delay(500);
+ 281   1        smgDisplay(5,Seg_Table_Dot[temper/100%10]);
+ 282   1        Delay(500);
+ 283   1        smgDisplay(6,Seg_Table[temper/10%10]);
+ 284   1        Delay(500);
+ 285   1        smgDisplay(7,Seg_Table[temper%10]);
+ 286   1        Delay(500);
+ 287   1        P0 = 0xff;
+ 288   1        SelectHC573(6);
+ 289   1        P0 = 0xff;
+ 290   1        SelectHC573(7);
+ 291   1        Delay(500);
+ 292   1      }
+ 293          
+ 294          void Display_Distance()
+ 295          {
+ 296   1        smgDisplay(0,0xc7);
+ 297   1        Delay(500);
+ 298   1        smgDisplay(1,0xff);
+ 299   1        Delay(500);
+ 300   1        smgDisplay(2,0xff);
+C51 COMPILER V9.60.7.0   MAIN                                                              02/03/2025 13:16:08 PAGE 6   
+
+ 301   1        Delay(500);
+ 302   1        smgDisplay(3,0xff);
+ 303   1        Delay(500);
+ 304   1        smgDisplay(4,0xff);
+ 305   1        Delay(500);
+ 306   1        smgDisplay(5,0xff);
+ 307   1        Delay(500);
+ 308   1        smgDisplay(6,Seg_Table[distance/10%10]);
+ 309   1        Delay(500);
+ 310   1        smgDisplay(7,Seg_Table[distance%10]);
+ 311   1        Delay(500);
+ 312   1        P0 = 0xff;
+ 313   1        SelectHC573(6);
+ 314   1        P0 = 0xff;
+ 315   1        SelectHC573(7);
+ 316   1        Delay(500);
+ 317   1      }
+ 318          
+ 319          void Display_EditTime()
+ 320          {
+ 321   1        smgDisplay(0,0x40);//0100 0000
+ 322   1        Delay(500);
+ 323   1        smgDisplay(1,0xff);
+ 324   1        Delay(500);
+ 325   1        smgDisplay(2,0xff);
+ 326   1        Delay(500);
+ 327   1        if(editTime > 9999)
+ 328   1          smgDisplay(3,Seg_Table[editTime/10000%10]);
+ 329   1        else
+ 330   1          smgDisplay(3,0xff);
+ 331   1        Delay(500);
+ 332   1        if(editTime > 999)
+ 333   1          smgDisplay(4,Seg_Table[editTime/1000%10]);
+ 334   1        else
+ 335   1          smgDisplay(4,0xff);
+ 336   1        Delay(500);
+ 337   1        if(editTime > 99)
+ 338   1          smgDisplay(5,Seg_Table[editTime/100%10]);
+ 339   1        else
+ 340   1          smgDisplay(5,0xff);
+ 341   1        Delay(500);
+ 342   1        if(editTime > 9)
+ 343   1          smgDisplay(6,Seg_Table[editTime/10%10]);
+ 344   1        else
+ 345   1          smgDisplay(6,0xff);
+ 346   1        Delay(500);
+ 347   1        smgDisplay(7,Seg_Table[editTime%10]);
+ 348   1        Delay(500);
+ 349   1        P0 = 0xff;
+ 350   1        SelectHC573(6);
+ 351   1        P0 = 0xff;
+ 352   1        SelectHC573(7);
+ 353   1        Delay(500);
+ 354   1      }
+ 355          
+ 356          void Display_TemperConfig()
+ 357          {
+ 358   1        smgDisplay(0,Seg_Table[5]);
+ 359   1        Delay(500);
+ 360   1        smgDisplay(1,0xff);
+ 361   1        Delay(500);
+ 362   1        smgDisplay(2,0xff);
+C51 COMPILER V9.60.7.0   MAIN                                                              02/03/2025 13:16:08 PAGE 7   
+
+ 363   1        Delay(500);
+ 364   1        smgDisplay(3,Seg_Table[4]);
+ 365   1        Delay(500);
+ 366   1        smgDisplay(4,0xff);
+ 367   1        Delay(500);
+ 368   1        smgDisplay(5,0xff);
+ 369   1        Delay(500);
+ 370   1        smgDisplay(6,Seg_Table[temperConfig_temp/10%10]);
+ 371   1        Delay(500);
+ 372   1        smgDisplay(7,Seg_Table[temperConfig_temp%10]);
+ 373   1        Delay(500);
+ 374   1        P0 = 0xff;
+ 375   1        SelectHC573(6);
+ 376   1        P0 = 0xff;
+ 377   1        SelectHC573(7);
+ 378   1        Delay(500);
+ 379   1      }
+ 380          
+ 381          void Display_DistanceConfig()
+ 382          {
+ 383   1        smgDisplay(0,Seg_Table[5]);
+ 384   1        Delay(500);
+ 385   1        smgDisplay(1,0xff);
+ 386   1        Delay(500);
+ 387   1        smgDisplay(2,0xff);
+ 388   1        Delay(500);
+ 389   1        smgDisplay(3,Seg_Table[4]);
+ 390   1        Delay(500);
+ 391   1        smgDisplay(4,0xff);
+ 392   1        Delay(500);
+ 393   1        smgDisplay(5,0xff);
+ 394   1        Delay(500);
+ 395   1        smgDisplay(6,Seg_Table[distanceConfig_temp/10%10]);
+ 396   1        Delay(500);
+ 397   1        smgDisplay(7,Seg_Table[distanceConfig_temp%10]);
+ 398   1        Delay(500);
+ 399   1        P0 = 0xff;
+ 400   1        SelectHC573(6);
+ 401   1        P0 = 0xff;
+ 402   1        SelectHC573(7);
+ 403   1        Delay(500);
+ 404   1      }
+ 405          
+ 406          void Key()
+ 407          {
+ 408   1        col1 = 0;
+ 409   1        col2 = 1;
+ 410   1        col3 = 1;
+ 411   1        col4 = 1;
+ 412   1        if(row3 == 0)//s13
+ 413   1        {
+ 414   2          s13_press = 1;
+ 415   2          ET0 = 1;
+ 416   2          Delay(500);
+ 417   2          if(row3 == 0)
+ 418   2          {
+ 419   3            while(row3 == 0)
+ 420   3            {
+ 421   4              if(s13 == 0)
+ 422   4              {
+ 423   5                if(s12 == 0)
+ 424   5                {
+C51 COMPILER V9.60.7.0   MAIN                                                              02/03/2025 13:16:08 PAGE 8   
+
+ 425   6                  Display_Temper();
+ 426   6                }
+ 427   5                else if(s12 == 1)
+ 428   5                {
+ 429   6                  Display_Distance();
+ 430   6                }
+ 431   5                else if(s12 == 2)
+ 432   5                {
+ 433   6                  Display_EditTime();
+ 434   6                }
+ 435   5              }
+ 436   4              else
+ 437   4              {
+ 438   5                if(s12 == 0)
+ 439   5                {
+ 440   6                  Display_TemperConfig();
+ 441   6                }
+ 442   5                else if(s12 == 1)
+ 443   5                {
+ 444   6                  Display_DistanceConfig();
+ 445   6                }
+ 446   5              }
+ 447   4            }
+ 448   3            if(s13 == 0  && ET0 == 1)
+ 449   3            {
+ 450   4              s13 = 1;
+ 451   4              s12 = 0;
+ 452   4            }
+ 453   3            else if(ET0 == 1)
+ 454   3            {
+ 455   4              s13 = 0;
+ 456   4              s12 = 0;
+ 457   4            }
+ 458   3          }
+ 459   2        }
+ 460   1        s13_press = 0;
+ 461   1        ET0 = 0;
+ 462   1        t0_count = 0;
+ 463   1        if(row4 == 0)//s12
+ 464   1        {
+ 465   2          s12_press = 1;
+ 466   2          ET0 = 1;
+ 467   2          Delay(500);
+ 468   2          if(row4 == 0)
+ 469   2          {
+ 470   3            while(row4 == 0)
+ 471   3            {
+ 472   4              if(s13 == 0)
+ 473   4              {
+ 474   5                if(s12 == 0)
+ 475   5                {
+ 476   6                  Display_Temper();
+ 477   6                }
+ 478   5                else if(s12 == 1)
+ 479   5                {
+ 480   6                  Display_Distance();
+ 481   6                }
+ 482   5                else if(s12 == 2)
+ 483   5                {
+ 484   6                  Display_EditTime();
+ 485   6                }
+ 486   5              }
+C51 COMPILER V9.60.7.0   MAIN                                                              02/03/2025 13:16:08 PAGE 9   
+
+ 487   4              else
+ 488   4              {
+ 489   5                if(s12 == 0)
+ 490   5                {
+ 491   6                  Display_TemperConfig();
+ 492   6                }
+ 493   5                else if(s12 == 1)
+ 494   5                {
+ 495   6                  Display_DistanceConfig();
+ 496   6                }
+ 497   5              }
+ 498   4            }
+ 499   3            if(s13 == 0 && ET0 == 1)
+ 500   3            {
+ 501   4              s12 ++;
+ 502   4              if(s12 >= 3)
+ 503   4              {
+ 504   5                s12 = 0;
+ 505   5              }
+ 506   4            }
+ 507   3            else if(ET0 == 1)
+ 508   3            {
+ 509   4              s12 ++;
+ 510   4              if(s12 >= 2)
+ 511   4              {
+ 512   5                s12 = 0;
+ 513   5              }
+ 514   4              if(temperConfig_temp != temperConfig)
+ 515   4              {
+ 516   5                temperConfig= temperConfig_temp;
+ 517   5                editTime ++;
+ 518   5                Write_AT24C02(0,editTime >> 8);
+ 519   5                Delay(1000);
+ 520   5                Write_AT24C02(1,editTime & 0x00ff);
+ 521   5                Delay(1000);
+ 522   5              }
+ 523   4              if(distanceConfig_temp != distanceConfig)
+ 524   4              {
+ 525   5                distanceConfig= distanceConfig_temp;
+ 526   5                editTime ++;
+ 527   5                Write_AT24C02(0,editTime >> 8);
+ 528   5                Delay(1000);
+ 529   5                Write_AT24C02(1,editTime & 0x00ff);
+ 530   5                Delay(1000);
+ 531   5              }
+ 532   4            }
+ 533   3          }
+ 534   2        }
+ 535   1        s12_press = 0;
+ 536   1        ET0 = 0;
+ 537   1        t0_count = 0;
+ 538   1        col1 = 1;
+ 539   1        col2 = 0;
+ 540   1        col3 = 1;
+ 541   1        col4 = 1;
+ 542   1        if(row3 == 0 && s13 == 1)//s17
+ 543   1        {
+ 544   2          Delay(500);
+ 545   2          if(row3 == 0)
+ 546   2          {
+ 547   3            while(row3 == 0)
+ 548   3            {
+C51 COMPILER V9.60.7.0   MAIN                                                              02/03/2025 13:16:08 PAGE 10  
+
+ 549   4              if(s13 == 0)
+ 550   4              {
+ 551   5                if(s12 == 0)
+ 552   5                {
+ 553   6                  Display_Temper();
+ 554   6                }
+ 555   5                else if(s12 == 1)
+ 556   5                {
+ 557   6                  Display_Distance();
+ 558   6                }
+ 559   5                else if(s12 == 2)
+ 560   5                {
+ 561   6                  Display_EditTime();
+ 562   6                }
+ 563   5              }
+ 564   4              else
+ 565   4              {
+ 566   5                if(s12 == 0)
+ 567   5                {
+ 568   6                  Display_TemperConfig();
+ 569   6                }
+ 570   5                else if(s12 == 1)
+ 571   5                {
+ 572   6                  Display_DistanceConfig();
+ 573   6                }
+ 574   5              }
+ 575   4            }
+ 576   3            if(s12 == 0 && temperConfig_temp < 98)
+ 577   3            {
+ 578   4              temperConfig_temp += 2;
+ 579   4            }
+ 580   3            else if(s12 == 1 && distanceConfig_temp < 95)
+ 581   3            {
+ 582   4              distanceConfig_temp += 5;
+ 583   4            }
+ 584   3          }
+ 585   2        }
+ 586   1        if(row4 == 0  && s13 == 1)//s16
+ 587   1        {
+ 588   2          Delay(500);
+ 589   2          if(row4 == 0)
+ 590   2          {
+ 591   3            while(row4 == 0)
+ 592   3            {
+ 593   4              if(s13 == 0)
+ 594   4              {
+ 595   5                if(s12 == 0)
+ 596   5                {
+ 597   6                  Display_Temper();
+ 598   6                }
+ 599   5                else if(s12 == 1)
+ 600   5                {
+ 601   6                  Display_Distance();
+ 602   6                }
+ 603   5                else if(s12 == 2)
+ 604   5                {
+ 605   6                  Display_EditTime();
+ 606   6                }
+ 607   5              }
+ 608   4              else
+ 609   4              {
+ 610   5                if(s12 == 0)
+C51 COMPILER V9.60.7.0   MAIN                                                              02/03/2025 13:16:08 PAGE 11  
+
+ 611   5                {
+ 612   6                  Display_TemperConfig();
+ 613   6                }
+ 614   5                else if(s12 == 1)
+ 615   5                {
+ 616   6                  Display_DistanceConfig();
+ 617   6                }
+ 618   5              }
+ 619   4            }
+ 620   3            if(s12 == 0 && temperConfig_temp > 0)
+ 621   3            {
+ 622   4              temperConfig_temp -= 2;
+ 623   4            }
+ 624   3            else if(s12 == 1 && distanceConfig_temp > 0)
+ 625   3            {
+ 626   4              distanceConfig_temp -= 5;
+ 627   4            }
+ 628   3          }
+ 629   2        }
+ 630   1      }
+ 631          
+ 632          void LED_Fun()
+ 633          {
+ 634   1        if(temper > temperConfig * 100 )
+ 635   1        {
+ 636   2          L1 = 0;
+ 637   2        }
+ 638   1        else
+ 639   1        {
+ 640   2          L1 = 1;
+ 641   2        }
+ 642   1        if(distance > distanceConfig * 100 )
+ 643   1        {
+ 644   2          L2 = 0;
+ 645   2        }
+ 646   1        else
+ 647   1        {
+ 648   2          L2 = 1;
+ 649   2        }
+ 650   1        if(s13_v == 0)
+ 651   1        {
+ 652   2          L3 = 0;
+ 653   2        }
+ 654   1        else
+ 655   1        {
+ 656   2          L3 = 1;
+ 657   2        }
+ 658   1        if(L1 == 0)
+ 659   1        {
+ 660   2          LED_Temp = LED_Temp & 0xfe;
+ 661   2        }
+ 662   1        else
+ 663   1        {
+ 664   2          LED_Temp = LED_Temp | 0x01;
+ 665   2        }
+ 666   1        if(L2 == 0)
+ 667   1        {
+ 668   2          LED_Temp = LED_Temp & 0xfd;
+ 669   2        }
+ 670   1        else
+ 671   1        {
+ 672   2          LED_Temp = LED_Temp | 0x02;
+C51 COMPILER V9.60.7.0   MAIN                                                              02/03/2025 13:16:08 PAGE 12  
+
+ 673   2        }
+ 674   1        if(L3 == 0)
+ 675   1        {
+ 676   2          LED_Temp = LED_Temp & 0xfb;
+ 677   2        }
+ 678   1        else
+ 679   1        {
+ 680   2          LED_Temp = LED_Temp | 0x04;
+ 681   2        }
+ 682   1        if(LED_Temp != LED)
+ 683   1        {
+ 684   2          LED = LED_Temp;
+ 685   2          P0 = LED;
+ 686   2          SelectHC573(4);
+ 687   2        }
+ 688   1      }
+ 689          
+ 690          void InitSystem()
+ 691          {
+ 692   1        P0 = 0xff;
+ 693   1        SelectHC573(4);
+ 694   1        P0 = 0x00;
+ 695   1        SelectHC573(5);
+ 696   1      }
+ 697          
+ 698          void main()
+ 699          {
+ 700   1        InitSystem();
+ 701   1        InitTimer0();
+ 702   1        InitUart();
+ 703   1        while(1)
+ 704   1        {
+ 705   2          if(s13 == 0)
+ 706   2          {
+ 707   3            if(s12 == 0)
+ 708   3            {
+ 709   4              Display_Temper();
+ 710   4            }
+ 711   3            else if(s12 == 1)
+ 712   3            {
+ 713   4              Display_Distance();
+ 714   4            }
+ 715   3            else if(s12 == 2)
+ 716   3            {
+ 717   4              Display_EditTime();
+ 718   4            }
+ 719   3          }
+ 720   2          else
+ 721   2          {
+ 722   3            if(s12 == 0)
+ 723   3            {
+ 724   4              Display_TemperConfig();
+ 725   4            }
+ 726   3            else if(s12 == 1)
+ 727   3            {
+ 728   4              Display_DistanceConfig();
+ 729   4            }
+ 730   3          }
+ 731   2          DS18B20_Read();
+ 732   2          Key();
+ 733   2          if(distance <= distanceConfig && s13_v == 0)
+ 734   2          {
+C51 COMPILER V9.60.7.0   MAIN                                                              02/03/2025 13:16:08 PAGE 13  
+
+ 735   3            PCF8591_PutVoltage(0,102);
+ 736   3          }
+ 737   2          else if(distance > distanceConfig && s13_v == 0)
+ 738   2          {
+ 739   3            PCF8591_PutVoltage(0,204);
+ 740   3          }
+ 741   2          LED_Fun();
+ 742   2          time ++;
+ 743   2          if(time >= 50)
+ 744   2          {
+ 745   3            time = 0;
+ 746   3            //Wave();
+ 747   3            SendByte(0x5a);
+ 748   3            SendByte(0xa5);
+ 749   3          }
+ 750   2        }
+ 751   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   2424    ----
+   CONSTANT SIZE    =     67    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     22      28
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      7    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
